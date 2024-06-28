@@ -3,7 +3,7 @@ import socket
 def main():
     # 监听地址和端口
     listen_host = '127.0.0.1'
-    listen_port = 3461
+    listen_port = 27015  # port
 
     # 创建UDP套接字
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
