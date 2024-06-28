@@ -18,12 +18,20 @@ struct DataPacket
         }
     }
 };
+struct UdpThread
+{
+    sockaddr_in udpSocketAddr;
+    SOCKET udpSocket;
+    thread udpRecvThread;
+};
+vector<UdpThread> udpRecvFromRemotehostThreadPool;
+map<string, SOCKET> mapIp2Socket;
 using dataPacketPtr = shared_ptr<DataPacket>;
 queue<dataPacketPtr> packet_queue;
 mutex packetQueueMutex;
 bool running_flag = true;
 
-void udpRecv(SOCKET& sock, sockaddr_in sock_addr)
+void udpRecv(SOCKET sock, sockaddr_in sock_addr)
 {
     // recv data
     while (running_flag)
@@ -56,7 +64,7 @@ void udpRecv(SOCKET& sock, sockaddr_in sock_addr)
     closesocket(sock);
 }
 
-bool createSocket(sockaddr_in sock_addr, SOCKET& sock)
+bool createListenSocket(sockaddr_in sock_addr, SOCKET& sock)
 {
     // create udp socket
     sock = socket(sock_addr.sin_family, SOCK_DGRAM, IPPROTO_UDP);
@@ -76,37 +84,8 @@ bool createSocket(sockaddr_in sock_addr, SOCKET& sock)
     return true;
 }
 
-int main() {
-    // 初始化Winsock
-    WSADATA data;
-    WORD version = MAKEWORD(2, 2);
-    int wsOK = WSAStartup(version, &data);
-    if (wsOK != 0) {
-        cerr << __func__ <<": can't init socket" << wsOK << endl;
-        return -1;
-    }
-    
-    // init udp socket
-    sockaddr_in sock_addr;
-    sock_addr.sin_family = AF_INET;
-    // recv from local host
-    sock_addr.sin_port = htons(3460);
-    sock_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    SOCKET udpRecvFromLocalHostSocket;
-    createSocket(sock_addr, udpRecvFromLocalHostSocket);
-    cout << "udp socket listenning from " << inet_ntoa(sock_addr.sin_addr)
-                << ":" << ntohs(sock_addr.sin_port) << endl;
-    thread udpRecvFromLocalHost(udpRecv, ref(udpRecvFromLocalHostSocket), sock_addr);
-
-    // recv from remote host
-    sock_addr.sin_port = htons(8905);
-    sock_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    SOCKET udpRecvFromRemoteHostSocket;
-    createSocket(sock_addr, udpRecvFromRemoteHostSocket);
-    cout << "udp socket listenning from " << inet_ntoa(sock_addr.sin_addr)
-            << ":" << ntohs(sock_addr.sin_port) << endl;
-    thread udpRecvFromRemoteHost(udpRecv, ref(udpRecvFromRemoteHostSocket), sock_addr);
-
+void udpSend()
+{
     // handle recved data packet
     while (running_flag)
     {
@@ -123,21 +102,22 @@ int main() {
                 packet_queue.pop();
             }
             DataPacket* pdp = firstElement.get();
-            SOCKET* pSendSocket;
             sockaddr_in send_addr;
             send_addr.sin_family = AF_INET;
+            send_addr.sin_port = htons(27015);
             send_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-            if (ntohs(pdp->recv_addr.sin_port) == 3460)
+            SOCKET sendSocket;
+            auto found = mapIp2Socket.find(inet_ntoa(pdp->send_addr.sin_addr));
+            if (found != mapIp2Socket.end())
             {
-                pSendSocket = &udpRecvFromRemoteHostSocket;
-                send_addr.sin_port = htons(8906);
+                sendSocket = found->second;
             }
-            else if (ntohs(pdp->send_addr.sin_port) == 8905)
+            else
             {
-                pSendSocket = &udpRecvFromLocalHostSocket;
-                send_addr.sin_port = htons(3461);
+                sendSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                mapIp2Socket[inet_ntoa(pdp->send_addr.sin_addr)] = sendSocket;
             }
-            int sendResult = sendto(*pSendSocket, pdp->data, pdp->dataBytes, 0, 
+            int sendResult = sendto(sendSocket, pdp->data, pdp->dataBytes, 0, 
                 reinterpret_cast<sockaddr*>(&send_addr), sizeof(send_addr));
             if (sendResult == -1)
             {
@@ -145,10 +125,54 @@ int main() {
             }
             else
             {
-                cout << "Sent " << sendResult << " bytes to " << inet_ntoa(pdp->send_addr.sin_addr) << ":" << ntohs(pdp->send_addr.sin_port) << endl;
+                cout << "Sent " << sendResult << " bytes to " << inet_ntoa(send_addr.sin_addr) << ":" << ntohs(send_addr.sin_port) << endl;
             }
         }
     }
+}
+
+int main() {
+    // 初始化Winsock
+    WSADATA data;
+    WORD version = MAKEWORD(2, 2);
+    int wsOK = WSAStartup(version, &data);
+    if (wsOK != 0) {
+        cerr << __func__ <<": can't init socket" << wsOK << endl;
+        return -1;
+    }
+
+    // // recv from local host
+    // sockaddr_in sock_addr;
+    // sock_addr.sin_family = AF_INET;
+    // sock_addr.sin_port = htons(3460);
+    // sock_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    // SOCKET udpRecvFromLocalHostSocket;
+    // createListenSocket(sock_addr, udpRecvFromLocalHostSocket);
+    // cout << "udp socket listenning from " << inet_ntoa(sock_addr.sin_addr)
+    //             << ":" << ntohs(sock_addr.sin_port) << endl;
+    // thread udpRecvFromLocalHost(udpRecv, ref(udpRecvFromLocalHostSocket), sock_addr);
+
+    // recv from remote host
+    for (uint16_t i = 8905; i < 8905 + 4; ++ i)
+    {
+        // init UdpThread
+        UdpThread uT;
+        // init sockaddr_in
+        uT.udpSocketAddr.sin_family = AF_INET;
+        uT.udpSocketAddr.sin_addr.s_addr = INADDR_ANY;
+        uT.udpSocketAddr.sin_port = htons(i);
+        // init SOCKET
+        createListenSocket(uT.udpSocketAddr, uT.udpSocket);
+        cout << "udp socket listenning from " << inet_ntoa(uT.udpSocketAddr.sin_addr)
+                << ":" << ntohs(uT.udpSocketAddr.sin_port) << endl;
+        // init thread
+        uT.udpRecvThread = move(thread(udpRecv, uT.udpSocket, uT.udpSocketAddr));
+        // add to udpRecvFromRemotehostThreadPool
+        udpRecvFromRemotehostThreadPool.push_back(move(uT));
+    }
+    
+
+    udpSend();
     WSACleanup();
 
     return 0;
