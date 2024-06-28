@@ -14,10 +14,10 @@ add_executable(server ${SERVER_FILES})
 target_link_libraries(server ${WS2_32_LIBRARY})
 
 # 设置源文件
-set(SERVER_FILES multi_udp.cpp)
+set(CLIENT_FILES client.cpp)
 
 # 添加可执行文件
-add_executable(multi_udp ${SERVER_FILES})
+add_executable(client ${CLIENT_FILES})
 
 # 链接Winsock库
-target_link_libraries(multi_udp ${WS2_32_LIBRARY})
+target_link_libraries(client ${WS2_32_LIBRARY})
