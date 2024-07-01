@@ -1,3 +1,14 @@
+/*
+ * File: server.cpp
+ * Author: zzDragon
+ * Created: 2024-07-01
+ * Last Modified: 2024-07-01
+ * Description: 
+ *  1. Listen to ports[8905-8908] to receive UDP from remote hosts
+ *  2. Create socket what bind random port to connect with localhost:27015 and forward remote host udp to localhost:27015
+ *  3. Listen to these socket what connected with localhost:27015 to receive local host udp
+ *  4. Forward these udp from localhost:27015 to remote hosts
+ */
 #include <bits/stdc++.h>
 #include <thread>
 #include <WS2tcpip.h>   // 包含Winsock2和网络相关的头文件
@@ -261,7 +272,7 @@ void udpSendToRemoteHost()              // one socket map one ip, no map then co
             sockaddr_in send_addr;
             send_addr.sin_family = AF_INET;
             send_addr.sin_port = htons(3460);
-            SOCKET sendSocket = udpSocketsConnectWithRemoteHost[0].sock;
+            SOCKET sendSocket = udpSocketsConnectWithRemoteHost[time(nullptr) / 60 % 60 % udpSocketsConnectWithRemoteHost.size()].sock;
             auto found = mapSocket2Ip.find(sendSocket);
             if (found != mapSocket2Ip.end())
             {

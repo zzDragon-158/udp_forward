@@ -1,3 +1,14 @@
+/*
+ * File: client.cpp
+ * Author: zzDragon
+ * Created: 2024-07-01
+ * Last Modified: 2024-07-01
+ * Description: 
+ *  1. Listen localhost:27015 to receive udp from localhost
+ *  2. Forward localhost udp to remotehost:port[8905-8908]
+ *  3. Listen to ports[8905-8908] to receive UDP from remotehost
+ *  4. Forward remotehost udp to localhost
+ */
 #include <bits/stdc++.h>
 #include <thread>
 #include <WS2tcpip.h>   // 包含Winsock2和网络相关的头文件
@@ -280,7 +291,7 @@ void udpSendToRemoteHost()              // one socket map one ip, no map then co
             send_addr.sin_family = AF_INET;
             send_addr.sin_port = htons(8905);
             send_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-            int sendResult = sendto(udpSocketsConnectWithRemoteHost[0].sock, pdp->data, pdp->dataBytes, 0, 
+            int sendResult = sendto(udpSocketsConnectWithRemoteHost[time(nullptr) / 60 % 60 % udpSocketsConnectWithRemoteHost.size()].sock, pdp->data, pdp->dataBytes, 0, 
                 reinterpret_cast<sockaddr*>(&send_addr), sizeof(send_addr));
             if (sendResult == -1)
             {
