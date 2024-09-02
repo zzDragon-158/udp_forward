@@ -10,7 +10,6 @@
  *  4. Forward remotehost udp to localhost
  */
 #include <bits/stdc++.h>
-#include <thread>
 #include <WS2tcpip.h>   // 包含Winsock2和网络相关的头文件
 
 #pragma comment(lib, "Ws2_32.lib")  // 链接Ws2_32.lib库文件
