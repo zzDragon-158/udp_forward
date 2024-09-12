@@ -1,8 +1,28 @@
-#include "public_api.h"
+#include <bits/stdc++.h>
+#include <WS2tcpip.h>   // 包含Winsock2和网络相关的头文件
+#pragma comment(lib, "Ws2_32.lib")  // 链接Ws2_32.lib库文件
 
 using namespace std;
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#define LogDebug(fmt,...)   fprintf(stdout, "[%s:%d] " fmt "\n", __func__, __LINE__, ##__VA_ARGS__)
+#define LogError(fmt,...)   fprintf(stderr, "[%s:%d] " fmt "\n", __func__, __LINE__, ##__VA_ARGS__)
 bool isWinsockInitialized = false;
-
+struct UdpPacket
+{
+    sockaddr_in6 addr;
+    SOCKET sock;
+    char* data;
+    int dataBytes;
+    UdpPacket() : sock(SOCKET_ERROR), data(nullptr), dataBytes(0) {
+        memset(&addr, 0, sizeof(addr));
+    }
+    ~UdpPacket() {
+        if (data != nullptr) {
+            delete[] data;
+        }
+    }
+};
+using UdpPacketPtr = shared_ptr<UdpPacket>;
 struct sockaddr_in6_compare {
     bool operator()(const sockaddr_in6& addr1, const sockaddr_in6& addr2) const {
         if (memcmp(&addr1.sin6_addr, &addr2.sin6_addr, sizeof(in6_addr)) != 0)
@@ -10,6 +30,61 @@ struct sockaddr_in6_compare {
         return addr1.sin6_port < addr2.sin6_port;
     }
 };
+
+SOCKET createUdpSocketV6(sockaddr_in6* pAddr)
+{
+    SOCKET sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock == INVALID_SOCKET) {
+        LogError("Can not create socket with WSAGetLastError %d.", WSAGetLastError());
+        return SOCKET_ERROR;
+    }
+    /* bind udp socket */ {
+        sockaddr_in6 addr;
+        memset(&addr, 0, sizeof(addr));
+        if (pAddr != nullptr) {
+            addr = *pAddr;
+        } else {
+            addr.sin6_family = AF_INET6;
+            addr.sin6_addr = in6addr_loopback;
+            addr.sin6_port = htons(0);
+        }
+        char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
+        inet_ntop(AF_INET6, &addr.sin6_addr, ipv6Addr, sizeof(ipv6Addr));
+        if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(sockaddr_in6)) == SOCKET_ERROR) {
+            LogError("Can not bind to %s:%u with WSAGetLastError %d.", ipv6Addr, ntohs(addr.sin6_port), WSAGetLastError());
+            closesocket(sock);
+            return SOCKET_ERROR;
+        }
+    }
+    // 10054 bug
+    BOOL bEnalbeConnRestError = FALSE;
+    DWORD dwBytesReturned = 0;
+    WSAIoctl(sock, SIO_UDP_CONNRESET, &bEnalbeConnRestError, sizeof(bEnalbeConnRestError), \
+            NULL, 0, &dwBytesReturned, NULL, NULL);
+    /* print addr */ {
+        sockaddr_in6 addr;
+        memset(&addr, 0, sizeof(addr));
+        int addrLen = sizeof(addr);
+        getsockname(sock, reinterpret_cast<sockaddr*>(&addr), &addrLen);
+        char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
+        inet_ntop(AF_INET6, &addr.sin6_addr, ipv6Addr, sizeof(ipv6Addr));
+        LogDebug("Create udp socket bind to %s:%u", ipv6Addr, ntohs(addr.sin6_port));
+    }
+    return sock;
+}
+
+int sendUdpPacketV6(SOCKET sock, sockaddr_in6* pAddr, UdpPacketPtr udpPacket) {
+    int sendResult = sendto(sock, udpPacket->data, udpPacket->dataBytes, 0, 
+        reinterpret_cast<sockaddr*>(pAddr), sizeof(sockaddr_in6));
+    if (sendResult == SOCKET_ERROR) {
+        LogError("Send failed with WSAGetLastError %d.", WSAGetLastError());
+    } else {
+        char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
+        inet_ntop(AF_INET6, &pAddr->sin6_addr, ipv6Addr, sizeof(ipv6Addr));
+        LogDebug("Send %d bytes to %s:%u", sendResult, ipv6Addr, ntohs(pAddr->sin6_port));
+    }
+    return sendResult;
+}
 
 class Server {
 public:
@@ -23,12 +98,12 @@ public:
 private:
     unordered_set<SOCKET> udpSokcetConnectWithLocalHost;
     vector<SOCKET> udpSokcetsConnectWithRemoteHost;
-    sockaddr_in ctrlSockAddr;
     SOCKET ctrlSocket;
     vector<SOCKET> udpSockets;
     fd_set udpSokcetsFDSet;
     condition_variable udpSokcetsFDSetCV;
-    sockaddr_in serverAddr;
+    vector<sockaddr_in6> serverAddrVector;
+    sockaddr_in6 serverAddr;     // 127.0.0.1:27015
     queue<UdpPacketPtr> udpPacketQueue;
     mutex udpPacketQueueMutex;
     condition_variable udpPacketQueueCV;
@@ -50,17 +125,10 @@ Server::Server() {
             LogDebug("WSAStartup success");
         }
     }
-    /* init ctrlSockAddr */ {
-        memset(&ctrlSockAddr, 0, sizeof(ctrlSockAddr));
-        ctrlSockAddr.sin_family = AF_INET;
-        ctrlSockAddr.sin_port = htons(0);
-        ctrlSockAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    }
     /* init serverAddr */ {
-        memset(&serverAddr, 0, sizeof(serverAddr));
-        serverAddr.sin_family = AF_INET;
-        serverAddr.sin_port = htons(27015);
-        serverAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        serverAddr.sin6_family = AF_INET6;
+        serverAddr.sin6_addr = in6addr_loopback;
+        serverAddr.sin6_port = htons(27015);
     }
     if (initUdpSockets()) {
         LogDebug("Init udpSockets success.");
@@ -88,7 +156,7 @@ bool Server::initUdpSockets() {
             // init remoteAddr
             remoteAddr.sin6_port = htons(8905+i);
             // create udp socket
-            SOCKET sock = createUdpSocketV6(remoteAddr);
+            SOCKET sock = createUdpSocketV6(&remoteAddr);
             if (sock == SOCKET_ERROR) {
                 LogError("Can not create remote socket %d.", i);
                 ret = false;
@@ -98,13 +166,14 @@ bool Server::initUdpSockets() {
         }
     }
     /* init ctrl socket */ {
-        ctrlSocket = createUdpSocket(ctrlSockAddr);
+        ctrlSocket = createUdpSocketV6(nullptr);
         if (ctrlSocket == SOCKET_ERROR) {
             LogError("Can not create ctrl socket.");
             ret = false;
         }
         udpSockets.push_back(ctrlSocket);
     }
+
     return ret;
 }
 
@@ -124,10 +193,10 @@ int Server::receiveUdpPacket() {
             if (FD_ISSET(sock, &udpSokcetsFDSet)) {
                 char packetBuffer[65535];
                 UdpPacketPtr upp = make_shared<UdpPacket>();
-                int sockAddrLen = sizeof(upp->sockAddr);
+                int addrLen = sizeof(sockaddr_in6);
                 upp->dataBytes = recvfrom(
                     sock, packetBuffer, 65535, 0, 
-                    reinterpret_cast<sockaddr*>(&upp->sockAddr), &sockAddrLen
+                    reinterpret_cast<sockaddr*>(&upp->addr), &addrLen
                 );
                 if (upp->dataBytes == SOCKET_ERROR) {
                     LogError("Recv failed with WSAGetLastError %d", WSAGetLastError());
@@ -164,53 +233,46 @@ int Server::forwardUdpPacket() {
         udpPacket = udpPacketQueue.front();
         udpPacketQueue.pop();
         lock.unlock();
+        SOCKET sendSocket;
+        sockaddr_in6 sendAddr;
+        memset(&sendAddr, 0, sizeof(sendAddr));
         if (udpSokcetConnectWithLocalHost.find(udpPacket->sock) != udpSokcetConnectWithLocalHost.end()) {
-            SOCKET sendSock;
-            sockaddr_in6 sendSockAddr;
-            memset(&sendSockAddr, 0, sizeof(sendSockAddr));
             auto it = socketMapAddr.find(udpPacket->sock);
             if (it != socketMapAddr.end()) {
-                sendSockAddr = it->second;
+                sendAddr = it->second;
             } else {
                 LogError("Can not find remote client addr.");
                 continue;
             }
-            sendSockAddr.sin6_port -= (udpPacketCount / 65536 % 4) << 8;
-            sendSock = udpSokcetsConnectWithRemoteHost[udpPacketCount / 65536 % 4];
+            sendAddr.sin6_port -= (udpPacketCount / 65536 % 4) << 8;
+            sendSocket = udpSokcetsConnectWithRemoteHost[udpPacketCount / 65536 % 4];
             ++udpPacketCount;
-            sendUdpPacketV6(sendSock, sendSockAddr, udpPacket);
         } else {
-            SOCKET sendSocket;
-            sockaddr_in sendSockAddr = serverAddr;
-            sockaddr_in6 uniqueSockAddr;
-            memset(&uniqueSockAddr, 0, sizeof(uniqueSockAddr));
-            uniqueSockAddr = *(reinterpret_cast<sockaddr_in6*>(udpPacket->sockAddr));
-            uniqueSockAddr.sin6_port += ((3 - ntohs(uniqueSockAddr.sin6_port % 4)) << 8);
-            auto it = addrMapSocket.find(uniqueSockAddr);
+            sockaddr_in6 uniqueAddr;
+            memset(&uniqueAddr, 0, sizeof(uniqueAddr));
+            uniqueAddr = udpPacket->addr;
+            uniqueAddr.sin6_port = udpPacket->addr.sin6_port + ((3 - ntohs(udpPacket->addr.sin6_port % 4)) << 8);
+            auto it = addrMapSocket.find(uniqueAddr);
             if (it != addrMapSocket.end()) {
                 sendSocket = it->second;
             } else {
-                sockaddr_in sockAddr;
-                memset(&sockAddr, 0, sizeof(sockAddr));
-                sockAddr.sin_family = AF_INET;
-                sockAddr.sin_port = htons(0);
-                sockAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-                sendSocket = createUdpSocket(sockAddr);
+                sendSocket = createUdpSocketV6(nullptr);
                 if (sendSocket != SOCKET_ERROR) {
-                    addrMapSocket[uniqueSockAddr] = sendSocket;
-                    socketMapAddr[sendSocket] = uniqueSockAddr;
+                    addrMapSocket[udpPacket->addr] = sendSocket;
+                    socketMapAddr[sendSocket] = udpPacket->addr;
                     udpSokcetConnectWithLocalHost.insert(sendSocket);
                     udpSockets.push_back(sendSocket);
                     sendUdpPacketToCtrl(sendSocket);
                 } else {
                     char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
-                    inet_ntop(AF_INET6, &uniqueSockAddr.sin6_addr, ipv6Addr, sizeof(ipv6Addr));
-                    LogError("Can not create udp socket for new client %s:%u.", ipv6Addr, ntohs(uniqueSockAddr.sin6_port));
+                    inet_ntop(AF_INET6, &uniqueAddr.sin6_addr, ipv6Addr, sizeof(ipv6Addr));
+                    LogError("Can not create udp socket for new client %s:%u.", ipv6Addr, ntohs(uniqueAddr.sin6_port));
                     continue;
                 }
             }
-            sendUdpPacket(sendSocket, sendSockAddr, udpPacket);
+            sendAddr = serverAddr;
         }
+        sendUdpPacketV6(sendSocket, &sendAddr, udpPacket);
         LogDebug("udpPacketQueue size %d", udpPacketQueue.size());
     }
     return 0;

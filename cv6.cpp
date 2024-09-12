@@ -1,7 +1,83 @@
-#include "public_api.h"
+#include <bits/stdc++.h>
+#include <WS2tcpip.h>   // 包含Winsock2和网络相关的头文件
+#pragma comment(lib, "Ws2_32.lib")  // 链接Ws2_32.lib库文件
 
 using namespace std;
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#define LogDebug(fmt,...)   fprintf(stdout, "[%s:%d] " fmt "\n", __func__, __LINE__, ##__VA_ARGS__)
+#define LogError(fmt,...)   fprintf(stderr, "[%s:%d] " fmt "\n", __func__, __LINE__, ##__VA_ARGS__)
 bool isWinsockInitialized = false;
+struct UdpPacket
+{
+    sockaddr_in6 addr;
+    SOCKET sock;
+    char* data;
+    int dataBytes;
+    UdpPacket() : sock(SOCKET_ERROR), data(nullptr), dataBytes(0) {
+        memset(&addr, 0, sizeof(addr));
+    }
+    ~UdpPacket() {
+        if (data != nullptr) {
+            delete[] data;
+        }
+    }
+};
+using UdpPacketPtr = shared_ptr<UdpPacket>;
+
+SOCKET createUdpSocketV6(sockaddr_in6* pAddr)
+{
+    SOCKET sock = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+    if (sock == INVALID_SOCKET) {
+        LogError("Can not create socket with WSAGetLastError %d.", WSAGetLastError());
+        return SOCKET_ERROR;
+    }
+    /* bind udp socket */ {
+        sockaddr_in6 addr;
+        memset(&addr, 0, sizeof(addr));
+        if (pAddr != nullptr) {
+            addr = *pAddr;
+        } else {
+            addr.sin6_family = AF_INET6;
+            addr.sin6_addr = in6addr_loopback;
+            addr.sin6_port = htons(0);
+        }
+        char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
+        inet_ntop(AF_INET6, &addr.sin6_addr, ipv6Addr, sizeof(ipv6Addr));
+        if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(sockaddr_in6)) == SOCKET_ERROR) {
+            LogError("Can not bind to %s:%u with WSAGetLastError %d.", ipv6Addr, ntohs(addr.sin6_port), WSAGetLastError());
+            closesocket(sock);
+            return SOCKET_ERROR;
+        }
+    }
+    // 10054 bug
+    BOOL bEnalbeConnRestError = FALSE;
+    DWORD dwBytesReturned = 0;
+    WSAIoctl(sock, SIO_UDP_CONNRESET, &bEnalbeConnRestError, sizeof(bEnalbeConnRestError), \
+            NULL, 0, &dwBytesReturned, NULL, NULL);
+    /* print addr */ {
+        sockaddr_in6 addr;
+        memset(&addr, 0, sizeof(addr));
+        int addrLen = sizeof(addr);
+        getsockname(sock, reinterpret_cast<sockaddr*>(&addr), &addrLen);
+        char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
+        inet_ntop(AF_INET6, &addr.sin6_addr, ipv6Addr, sizeof(ipv6Addr));
+        LogDebug("Create udp socket bind to %s:%u", ipv6Addr, ntohs(addr.sin6_port));
+    }
+    return sock;
+}
+
+int sendUdpPacketV6(SOCKET sock, sockaddr_in6* pAddr, UdpPacketPtr udpPacket) {
+    int sendResult = sendto(sock, udpPacket->data, udpPacket->dataBytes, 0, 
+        reinterpret_cast<sockaddr*>(pAddr), sizeof(sockaddr_in6));
+    if (sendResult == SOCKET_ERROR) {
+        LogError("Send failed with WSAGetLastError %d.", WSAGetLastError());
+    } else {
+        char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
+        inet_ntop(AF_INET6, &pAddr->sin6_addr, ipv6Addr, sizeof(ipv6Addr));
+        LogDebug("Send %d bytes to %s:%u", sendResult, ipv6Addr, ntohs(pAddr->sin6_port));
+    }
+    return sendResult;
+}
 
 class Client {
 public:
@@ -17,7 +93,7 @@ private:
     vector<SOCKET> udpSockets;
     fd_set udpSokcetsFDSet;
     vector<sockaddr_in6> serverAddrVector;
-    sockaddr_in clientAddr;
+    sockaddr_in6 clientAddr;
     queue<UdpPacketPtr> udpPacketQueue;
     mutex udpPacketQueueMutex;
     condition_variable udpPacketQueueCV;
@@ -48,11 +124,6 @@ Client::Client() {
             serverAddrVector.push_back(serverAddr);
         }
     }
-    /* init clientAddr */ {
-        clientAddr.sin_family = AF_INET;
-        clientAddr.sin_port = htons(0);
-        clientAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    }
     if (initUdpSockets()) {
         LogDebug("Init udpSockets success.");
     } else {
@@ -79,7 +150,7 @@ bool Client::initUdpSockets() {
             // init remoteAddr
             remoteAddr.sin6_port = htons(3461+i);
             // create udp socket
-            SOCKET sock = createUdpSocketV6(remoteAddr);
+            SOCKET sock = createUdpSocketV6(&remoteAddr);
             if (sock == SOCKET_ERROR) {
                 keepRunning = false;
                 LogError("Can not create remote socket %d.", i);
@@ -91,13 +162,13 @@ bool Client::initUdpSockets() {
     }
     /* init udpSokcetConnectWithLocalHost */ {
         // init localAddr
-        sockaddr_in localAddr;
+        sockaddr_in6 localAddr;
         memset(&localAddr, 0, sizeof(localAddr));
-        localAddr.sin_family = AF_INET;
-        localAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        localAddr.sin_port = htons(3460);
+        localAddr.sin6_family = AF_INET6;
+        localAddr.sin6_addr = in6addr_loopback;
+        localAddr.sin6_port = htons(3460);
         // create udp socket
-        SOCKET sock = createUdpSocket(localAddr);
+        SOCKET sock = createUdpSocketV6(&localAddr);
         if (sock == SOCKET_ERROR) {
             keepRunning = false;
             LogError("Can not create local socket.");
@@ -133,10 +204,10 @@ int Client::receiveUdpPacket() {
             if (FD_ISSET(sock, &udpSokcetsFDSet)) {
                 char packetBuffer[65535];
                 UdpPacketPtr upp = make_shared<UdpPacket>();
-                int sockAddrLen = sizeof(upp->sockAddr);
+                int addrLen = sizeof(sockaddr_in6);
                 upp->dataBytes = recvfrom(
                     sock, packetBuffer, 65535, 0, 
-                    reinterpret_cast<sockaddr*>(&upp->sockAddr), &sockAddrLen
+                    reinterpret_cast<sockaddr*>(&upp->addr), &addrLen
                 );
                 if (upp->dataBytes == SOCKET_ERROR) {
                     LogError("Recv failed with WSAGetLastError %d", WSAGetLastError());
@@ -170,21 +241,20 @@ int Client::forwardUdpPacket() {
         udpPacket = udpPacketQueue.front();
         udpPacketQueue.pop();
         lock.unlock();
+        SOCKET sendSocket;
+        sockaddr_in6 sendAddr;
+        memset(&sendAddr, 0, sizeof(sendAddr));
         if (udpPacket->sock == udpSokcetConnectWithLocalHost) {
-            SOCKET sendSocket = udpSokcetsConnectWithRemoteHost[udpPacketCount / 65536 % 4];
-            sockaddr_in6 sendAddr = serverAddrVector[udpPacketCount / 65536 % 4];
-            sockaddr_in recvSockAddr = *(reinterpret_cast<sockaddr_in*>(&udpPacket->sockAddr));
-            if (clientAddr.sin_port != recvSockAddr.sin_port) {
-                clientAddr = recvSockAddr;
-                LogDebug("new client connected, port: %u", ntohs(clientAddr.sin_port));
-            }
+            sendSocket = udpSokcetsConnectWithRemoteHost[udpPacketCount / 65536 % 4];
+            sendAddr = serverAddrVector[udpPacketCount / 65536 % 4];
+            clientAddr = udpPacket->addr;
+            LogDebug("new client connected, port: %u", ntohs(clientAddr.sin6_port));
             ++udpPacketCount;
-            sendUdpPacketV6(sendSocket, sendAddr, udpPacket);
         } else {
-            SOCKET sendSocket = udpSokcetConnectWithLocalHost;
-            sockaddr_in sendAddr = clientAddr;
-            sendUdpPacket(sendSocket, sendAddr, udpPacket);
+            sendSocket = udpSokcetConnectWithLocalHost;
+            sendAddr = clientAddr;
         }
+        sendUdpPacketV6(sendSocket, &sendAddr, udpPacket);
         LogDebug("udpPacketQueue size %d", udpPacketQueue.size());
     }
     return 0;
