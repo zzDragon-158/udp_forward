@@ -4,8 +4,16 @@
 #include <bits/stdc++.h>
 #include <WS2tcpip.h>
 
-#define LogDebug(fmt,...)   fprintf(stdout, "[%s:%d] " fmt "\n", __func__, __LINE__, ##__VA_ARGS__)
-#define LogError(fmt,...)   fprintf(stderr, "[%s:%d] " fmt "\n", __func__, __LINE__, ##__VA_ARGS__)
+#define LogDebug(fmt, ...)  { \
+    char buffer[256]; \
+    std::snprintf(buffer, sizeof(buffer), "[%s:%s:%d] " fmt, (strrchr(__FILE__,'\\') != 0? strrchr(__FILE__, '\\')+1: __FILE__), __func__, __LINE__, ##__VA_ARGS__); \
+    std::cout << buffer << std::flush; \
+}
+#define LogError(fmt, ...)  { \
+    char buffer[256]; \
+    std::snprintf(buffer, sizeof(buffer), "[%s:%s:%d] " fmt, (strrchr(__FILE__,'\\') != 0? strrchr(__FILE__, '\\')+1: __FILE__), __func__, __LINE__, ##__VA_ARGS__); \
+    std::cerr << buffer << std::flush; \
+}
 
 struct UdpPacket {
     uint8_t sockAddr[32];
@@ -22,6 +30,7 @@ struct UdpPacket {
     }
 };
 using UdpPacketPtr = std::shared_ptr<UdpPacket>;
+extern bool isWinsockInitialized;
 
 SOCKET createUdpSocket(sockaddr_in& rSockAddr);
 SOCKET createUdpSocketV6(sockaddr_in6& rSockAddr);

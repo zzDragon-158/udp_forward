@@ -1,68 +1,91 @@
-cmake_minimum_required(VERSION 3.24)
-project(udp_forward)
+cmake_minimum_required(VERSION 3.16)
 
-# 查找Winsock库
+project(udp_forward VERSION 0.1 LANGUAGES CXX)
+
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets LinguistTools)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Network)
 find_library(WS2_32_LIBRARY ws2_32)
+# my public api
+set(PUBLIC_API_FILES public_api.cpp public_api.h)
+add_library(public_api STATIC ${PUBLIC_API_FILES})
+target_link_libraries(public_api PRIVATE ${WS2_32_LIBRARY})
+# my client
+set(CLIENT_FILES client.cpp client.h)
+add_library(client STATIC ${CLIENT_FILES})
+target_link_libraries(client PRIVATE public_api)
+# my server
+set(SERVER_FILES server.cpp server.h)
+add_library(server STATIC ${SERVER_FILES})
+target_link_libraries(server PRIVATE public_api)
 
-# 设置源文件
-set(PUBLIC_API_FILES public_api.cpp)
+set(TS_FILES udp_forward_zh_CN.ts)
 
-# 添加共享库
-add_library(public_api ${PUBLIC_API_FILES})
+set(PROJECT_SOURCES
+        main.cpp
+        mainwindow.cpp
+        mainwindow.h
+        mainwindow.ui
+        ${TS_FILES}
+)
 
-# 链接Winsock库
-target_link_libraries(public_api ${WS2_32_LIBRARY})
+if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
+    qt_add_executable(udp_forward
+        MANUAL_FINALIZATION
+        ${PROJECT_SOURCES}
+    )
+# Define target properties for Android with Qt 6 as:
+#    set_property(TARGET udp_forward APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
+#                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
+# For more information, see https://doc.qt.io/qt-6/qt-add-executable.html#target-creation
 
-# 设置源文件
-set(SERVER_FILES server.cpp)
+    qt_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
+else()
+    if(ANDROID)
+        add_library(udp_forward STATIC
+            ${PROJECT_SOURCES}
+        )
+# Define properties for Android with Qt 5 after find_package() calls as:
+#    set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
+    else()
+        add_executable(udp_forward
+            ${PROJECT_SOURCES}
+        )
+    endif()
 
-# 添加可执行文件
-add_executable(server ${SERVER_FILES})
+    qt5_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
+endif()
 
-# 链接Winsock库
-target_link_libraries(server ${WS2_32_LIBRARY} public_api)
+target_link_libraries(udp_forward PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network server client)
 
-# 设置源文件
-set(CLIENT_FILES client.cpp)
+# Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
+# If you are developing for iOS or macOS you should consider setting an
+# explicit, fixed bundle identifier manually though.
+if(${QT_VERSION} VERSION_LESS 6.1.0)
+  set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.udp_forward)
+endif()
+set_target_properties(udp_forward PROPERTIES
+    ${BUNDLE_ID_OPTION}
+    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
+    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
+    MACOSX_BUNDLE TRUE
+    WIN32_EXECUTABLE TRUE
+)
 
-# 添加可执行文件
-add_executable(client ${CLIENT_FILES})
+include(GNUInstallDirs)
+install(TARGETS udp_forward
+    BUNDLE DESTINATION .
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
 
-# 链接Winsock库
-target_link_libraries(client ${WS2_32_LIBRARY} public_api)
-
-# 设置源文件
-set(C_FILES c.cpp)
-
-# 添加可执行文件
-add_executable(c ${C_FILES})
-
-# 链接Winsock库
-target_link_libraries(c ${WS2_32_LIBRARY})
-
-# 设置源文件
-set(S_FILES s.cpp)
-
-# 添加可执行文件
-add_executable(s ${S_FILES})
-
-# 链接Winsock库
-target_link_libraries(s ${WS2_32_LIBRARY})
-
-# 设置源文件
-set(SV6_FILES sv6.cpp)
-
-# 添加可执行文件
-add_executable(sv6 ${SV6_FILES})
-
-# 链接Winsock库
-target_link_libraries(sv6 ${WS2_32_LIBRARY})
-
-# 设置源文件
-set(CV6_FILES cv6.cpp)
-
-# 添加可执行文件
-add_executable(cv6 ${CV6_FILES})
-
-# 链接Winsock库
-target_link_libraries(cv6 ${WS2_32_LIBRARY})
+if(QT_VERSION_MAJOR EQUAL 6)
+    qt_finalize_executable(udp_forward)
+endif()

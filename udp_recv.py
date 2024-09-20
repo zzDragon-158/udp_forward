@@ -1,3 +1,4 @@
+# this python script only for test
 import socket
 
 def main():

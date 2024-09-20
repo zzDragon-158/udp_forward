@@ -1,30 +1,10 @@
-#include "public_api.h"
+#include "client.h"
 
-using namespace std;
-bool isWinsockInitialized = false;
+#define SWITCH_THRESHOLD 5000
 
-class Client {
-public:
-    Client();
-    ~Client();
-    bool initUdpSockets();
-    int receiveUdpPacket();
-    int forwardUdpPacket();
-    int run();
-private:
-    SOCKET udpSokcetConnectWithLocalHost;
-    vector<SOCKET> udpSokcetsConnectWithRemoteHost;
-    vector<SOCKET> udpSockets;
-    fd_set udpSokcetsFDSet;
-    vector<sockaddr_in6> serverAddrVector;
-    sockaddr_in clientAddr;
-    queue<UdpPacketPtr> udpPacketQueue;
-    mutex udpPacketQueueMutex;
-    condition_variable udpPacketQueueCV;
-    bool keepRunning;
-};
+extern bool isWinsockInitialized;
 
-Client::Client() {
+Client::Client(const char* serverIPv6Addr, uint16_t serverPort, uint16_t remotePort, uint16_t localPort) {
     keepRunning = true;
     // init Winsock
     WSADATA wsaData;
@@ -37,23 +17,8 @@ Client::Client() {
             LogDebug("WSAStartup success");
         }
     }
-    /* init serverAddrVector */ {
-        sockaddr_in6 serverAddr;
-        memset(&serverAddr, 0, sizeof(serverAddr));
-        serverAddr.sin6_family = AF_INET6;
-        serverAddr.sin6_addr = in6addr_loopback;
-        for (int i = 0; i < 4; ++i) {
-            // init serverAddr
-            serverAddr.sin6_port = htons(8905+i);
-            serverAddrVector.push_back(serverAddr);
-        }
-    }
-    /* init clientAddr */ {
-        clientAddr.sin_family = AF_INET;
-        clientAddr.sin_port = htons(0);
-        clientAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    }
-    if (initUdpSockets()) {
+    initSockAddr(serverIPv6Addr, serverPort);
+    if (initUdpSockets(remotePort, localPort)) {
         LogDebug("Init udpSockets success.");
     } else {
         keepRunning = false;
@@ -65,19 +30,44 @@ Client::~Client() {
     for (const SOCKET& sock: udpSockets) {
         closesocket(sock);
     }
-    WSACleanup();
 }
 
-bool Client::initUdpSockets() {
+void Client::initSockAddr(const char* serverIPv6Addr, uint16_t serverPort) {
+    /* init serverAddrVector */ {
+        sockaddr_in6 serverAddr;
+        memset(&serverAddr, 0, sizeof(serverAddr));
+        serverAddr.sin6_family = AF_INET6;
+        inet_pton(AF_INET6, serverIPv6Addr, &serverAddr.sin6_addr);
+        for (int i = 0; i < 4; ++i) {
+            // init serverAddr
+            serverAddr.sin6_port = htons(serverPort + i);
+            serverAddrVector.push_back(serverAddr);
+        }
+    }
+    /* init clientAddr */ {
+        clientAddr.sin_family = AF_INET;
+        clientAddr.sin_port = htons(0);
+        clientAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    }
+    /* init ctrlSockAddr */ {
+        memset(&ctrlSockAddr, 0, sizeof(ctrlSockAddr));
+        ctrlSockAddr.sin_family = AF_INET;
+        ctrlSockAddr.sin_port = htons(0);
+        ctrlSockAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    }
+}
+
+bool Client::initUdpSockets(uint16_t remotePort, uint16_t localPort) {
     bool ret = true;
     /* init udpSokcetsConnectWithRemoteHost */ {
         sockaddr_in6 remoteAddr;
         memset(&remoteAddr, 0, sizeof(remoteAddr));
         remoteAddr.sin6_family = AF_INET6;
-        remoteAddr.sin6_addr = in6addr_loopback;
+        remoteAddr.sin6_addr = in6addr_any;
+        remotePort -= remotePort % 4;
         for (int i = 0; i < 4; ++i) {
             // init remoteAddr
-            remoteAddr.sin6_port = htons(3461+i);
+            remoteAddr.sin6_port = htons(remotePort + i);
             // create udp socket
             SOCKET sock = createUdpSocketV6(remoteAddr);
             if (sock == SOCKET_ERROR) {
@@ -95,7 +85,7 @@ bool Client::initUdpSockets() {
         memset(&localAddr, 0, sizeof(localAddr));
         localAddr.sin_family = AF_INET;
         localAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        localAddr.sin_port = htons(3460);
+        localAddr.sin_port = htons(localPort);
         // create udp socket
         SOCKET sock = createUdpSocket(localAddr);
         if (sock == SOCKET_ERROR) {
@@ -106,17 +96,17 @@ bool Client::initUdpSockets() {
         udpSokcetConnectWithLocalHost = sock;
         udpSockets.push_back(sock);
     }
-
+    /* init ctrl socket */ {
+        ctrlSocket = createUdpSocket(ctrlSockAddr);
+        if (ctrlSocket == SOCKET_ERROR) {
+            LogError("Can not create ctrl socket.");
+            ret = false;
+        }
+        udpSockets.push_back(ctrlSocket);
+    }
     return ret;
 }
 
-/**
- * 函数名：recvUdpPacketFromRemoteHost
- * 功能：从远程主机接收 Udp 数据包
- * 参数：无
- * 返回值：SOCKET，成功返回 0，失败返回 SOCKET_ERROR
- * 异常：如果创建套接字失败，该线程将打印错误信息并直接返回
- */
 int Client::receiveUdpPacket() {
     // recv udp packet from remote host
     while (keepRunning) {
@@ -135,7 +125,7 @@ int Client::receiveUdpPacket() {
                 UdpPacketPtr upp = make_shared<UdpPacket>();
                 int sockAddrLen = sizeof(upp->sockAddr);
                 upp->dataBytes = recvfrom(
-                    sock, packetBuffer, 65535, 0, 
+                    sock, packetBuffer, 65535, 0,
                     reinterpret_cast<sockaddr*>(&upp->sockAddr), &sockAddrLen
                 );
                 if (upp->dataBytes == SOCKET_ERROR) {
@@ -147,8 +137,8 @@ int Client::receiveUdpPacket() {
                     /* push to queue */ {
                         lock_guard<mutex> lock(udpPacketQueueMutex);
                         udpPacketQueue.push(upp);
-                        udpPacketQueueCV.notify_one();
                     }
+                    udpPacketQueueCV.notify_one();
                 }
             }
         }
@@ -170,9 +160,12 @@ int Client::forwardUdpPacket() {
         udpPacket = udpPacketQueue.front();
         udpPacketQueue.pop();
         lock.unlock();
+        if (udpPacket->sock == ctrlSocket) {
+            continue;
+        }
         if (udpPacket->sock == udpSokcetConnectWithLocalHost) {
-            SOCKET sendSocket = udpSokcetsConnectWithRemoteHost[udpPacketCount / 65536 % 4];
-            sockaddr_in6 sendAddr = serverAddrVector[udpPacketCount / 65536 % 4];
+            SOCKET sendSocket = udpSokcetsConnectWithRemoteHost[udpPacketCount / SWITCH_THRESHOLD % 4];
+            sockaddr_in6 sendAddr = serverAddrVector[udpPacketCount / SWITCH_THRESHOLD % 4];
             sockaddr_in recvSockAddr = *(reinterpret_cast<sockaddr_in*>(&udpPacket->sockAddr));
             if (clientAddr.sin_port != recvSockAddr.sin_port) {
                 clientAddr = recvSockAddr;
@@ -185,22 +178,45 @@ int Client::forwardUdpPacket() {
             sockaddr_in sendAddr = clientAddr;
             sendUdpPacket(sendSocket, sendAddr, udpPacket);
         }
-        LogDebug("udpPacketQueue size %d", udpPacketQueue.size());
+        // LogDebug("udpPacketQueue size %d", udpPacketQueue.size());
     }
     return 0;
 }
 
-int Client::run() {
-    thread recvUdpPacketFromRemoteHostThread(Client::receiveUdpPacket, this);
-    thread forwardPacketThread(Client::forwardUdpPacket, this);
-    recvUdpPacketFromRemoteHostThread.join();
-    forwardPacketThread.join();
-    LogDebug("Client exit.");
+int Client::sendUdpPacketToCtrl()
+{
+    if (ctrlSockAddr.sin_port == htons(0)) {
+        int addrLen = sizeof(ctrlSockAddr);
+        if (getsockname(ctrlSocket, reinterpret_cast<sockaddr*>(&ctrlSockAddr), &addrLen) != 0) {
+            LogError("Can not get sockname.");
+            return SOCKET_ERROR;
+        }
+    }
+    int sendResult = sendto(ctrlSocket, "zzDragon", sizeof("zzDragon"), 0,
+        reinterpret_cast<sockaddr*>(&ctrlSockAddr), sizeof(ctrlSockAddr));
+    if (sendResult == SOCKET_ERROR) {
+        LogError("Send failed with WSAGetLastError %d.", WSAGetLastError());
+        return SOCKET_ERROR;
+    // } else {
+    //     char ipv4Addr[INET_ADDRSTRLEN] = {'\0'};
+    //     inet_ntop(AF_INET, &ctrlSockAddr.sin_addr, ipv4Addr, sizeof(ipv4Addr));
+    //     LogDebug("Sent %d bytes to %s:%d", sendResult, ipv4Addr, ntohs(ctrlSockAddr.sin_port));
+    }
     return 0;
 }
 
-int main() {
-    Client client;
-    client.run();
+int Client::start() {
+    thread recvUdpPacketFromRemoteHostThread(Client::receiveUdpPacket, this);
+    thread forwardPacketThread(Client::forwardUdpPacket, this);
+    LogDebug("client is running");
+    recvUdpPacketFromRemoteHostThread.join();
+    forwardPacketThread.join();
+    LogDebug("client exit");
+    return 0;
+}
+
+int Client::stop() {
+    keepRunning = false;
+    sendUdpPacketToCtrl();
     return 0;
 }
