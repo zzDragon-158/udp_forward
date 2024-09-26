@@ -20,6 +20,7 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+    void setLcdNumber(int number);
 
 private slots:
     void onPushButtonClientRunClicked();
@@ -27,6 +28,11 @@ private slots:
 
 private:
     Ui::MainWindow *ui;
+    void saveClientConfigToJson();
+    void saveServerConfigToJson();
+    void loadConfigFromJson();
+    void setClientConfigReadOnly(bool flag);
+    void setServerConfigReadOnly(bool flag);
 };
 
 // 自定义流缓冲区
@@ -37,8 +43,10 @@ public:
 protected:
     // 缓存输出的字符串
     std::string buffer;
+    std::mutex bufferMutex;
 
     int overflow(int c) override {
+        std::lock_guard<mutex> lock(bufferMutex);
         if (c != EOF) {
             buffer += static_cast<char>(c);
         }

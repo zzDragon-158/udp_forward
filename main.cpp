@@ -18,6 +18,11 @@ int main(int argc, char *argv[])
         }
     }
     MainWindow w;
+    w.setFixedSize(800, 600);
+
+    extern MainWindow* pMW;
+    pMW = &w;
+
     w.show();
     return a.exec();
 }

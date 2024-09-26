@@ -1,8 +1,10 @@
 #include "server.h"
+#include "mainwindow.h"
 
 #define SWITCH_THRESHOLD 5000
 
 extern bool isWinsockInitialized;
+MainWindow* pMW = nullptr;
 
 Server::Server(uint16_t serverPort, uint16_t remotePort) {
     keepRunning = true;
@@ -29,7 +31,7 @@ Server::Server(uint16_t serverPort, uint16_t remotePort) {
         serverAddr.sin_port = htons(serverPort);
         serverAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     }
-    if (initUdpSockets(remotePort)) {
+    if (initUdpSockets(getUniquePort(remotePort))) {
         LogDebug("Init udpSockets success.");
     } else {
         keepRunning = false;
@@ -50,7 +52,6 @@ bool Server::initUdpSockets(uint16_t remotePort) {
         memset(&remoteAddr, 0, sizeof(remoteAddr));
         remoteAddr.sin6_family = AF_INET6;
         remoteAddr.sin6_addr = in6addr_any;
-        remotePort -= remotePort % 4;
         for (int i = 0; i < 4; ++i) {
             // init remoteAddr
             remoteAddr.sin6_port = htons(remotePort + i);
@@ -61,7 +62,7 @@ bool Server::initUdpSockets(uint16_t remotePort) {
                 ret = false;
             }
             udpSokcetsConnectWithRemoteHost.push_back(sock);
-            udpSockets.push_back(sock);
+            udpSockets.insert(sock);
         }
     }
     /* init ctrl socket */ {
@@ -70,13 +71,12 @@ bool Server::initUdpSockets(uint16_t remotePort) {
             LogError("Can not create ctrl socket.");
             ret = false;
         }
-        udpSockets.push_back(ctrlSocket);
+        udpSockets.insert(ctrlSocket);
     }
     return ret;
 }
 
 int Server::receiveUdpPacket() {
-    // recv udp packet from remote host
     while (keepRunning) {
         FD_ZERO(&udpSokcetsFDSet);
         for (const SOCKET& sock: udpSockets) {
@@ -84,8 +84,7 @@ int Server::receiveUdpPacket() {
         }
         if (select(0, &udpSokcetsFDSet, NULL, NULL, NULL) == SOCKET_ERROR) {
             LogError("Select failed with WSAGetLastError %d", WSAGetLastError());
-            keepRunning = false;
-            break;
+            continue;
         }
         for (const SOCKET& sock: udpSockets) {
             if (FD_ISSET(sock, &udpSokcetsFDSet)) {
@@ -98,6 +97,7 @@ int Server::receiveUdpPacket() {
                 );
                 if (upp->dataBytes == SOCKET_ERROR) {
                     LogError("Recv failed with WSAGetLastError %d", WSAGetLastError());
+                    continue;
                 } else {
                     upp->data = new char[upp->dataBytes];
                     upp->sock = sock;
@@ -132,7 +132,7 @@ int Server::forwardUdpPacket() {
             continue;
         }
         if (udpSokcetConnectWithLocalHost.find(udpPacket->sock) != udpSokcetConnectWithLocalHost.end()) {
-            SOCKET sendSock;
+            SOCKET sendSocket;
             sockaddr_in6 sendSockAddr;
             memset(&sendSockAddr, 0, sizeof(sendSockAddr));
             auto it = socketMapAddr.find(udpPacket->sock);
@@ -143,43 +143,44 @@ int Server::forwardUdpPacket() {
                 continue;
             }
             sendSockAddr.sin6_port += (udpPacketCount / SWITCH_THRESHOLD % 4) << 8;
-            sendSock = udpSokcetsConnectWithRemoteHost[udpPacketCount / SWITCH_THRESHOLD % 4];
+            sendSocket = udpSokcetsConnectWithRemoteHost[udpPacketCount / SWITCH_THRESHOLD % 4];
             ++udpPacketCount;
-            sendUdpPacketV6(sendSock, sendSockAddr, udpPacket);
+            sendUdpPacketV6(sendSocket, sendSockAddr, udpPacket);
         } else {
             SOCKET sendSocket;
             sockaddr_in sendSockAddr = serverAddr;
             sockaddr_in6 uniqueSockAddr;
             memset(&uniqueSockAddr, 0, sizeof(uniqueSockAddr));
             uniqueSockAddr = *(reinterpret_cast<sockaddr_in6*>(udpPacket->sockAddr));
-            uniqueSockAddr.sin6_port -= ((ntohs(uniqueSockAddr.sin6_port) % 4) << 8);
+            uniqueSockAddr.sin6_port = htons(getUniquePort(ntohs(uniqueSockAddr.sin6_port)));
             auto it = addrMapSocket.find(uniqueSockAddr);
             if (it != addrMapSocket.end()) {
                 sendSocket = it->second;
             } else {
-                LogDebug("uniqueSockAddr.sin6_port = %u", ntohs(uniqueSockAddr.sin6_port));
                 sockaddr_in sockAddr;
                 memset(&sockAddr, 0, sizeof(sockAddr));
                 sockAddr.sin_family = AF_INET;
                 sockAddr.sin_port = htons(0);
                 sockAddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
                 sendSocket = createUdpSocket(sockAddr);
+                char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
+                inet_ntop(AF_INET6, &uniqueSockAddr.sin6_addr, ipv6Addr, sizeof(ipv6Addr));
                 if (sendSocket != SOCKET_ERROR) {
+                    LogDebug("Create udp socket %u for new client from %s:%u.", sendSocket, ipv6Addr, ntohs(uniqueSockAddr.sin6_port));
                     addrMapSocket[uniqueSockAddr] = sendSocket;
                     socketMapAddr[sendSocket] = uniqueSockAddr;
+                    socketLifeCycle[sendSocket] = 60;
                     udpSokcetConnectWithLocalHost.insert(sendSocket);
-                    udpSockets.push_back(sendSocket);
+                    udpSockets.insert(sendSocket);
                     sendUdpPacketToCtrl();
                 } else {
-                    char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
-                    inet_ntop(AF_INET6, &uniqueSockAddr.sin6_addr, ipv6Addr, sizeof(ipv6Addr));
-                    LogError("Can not create udp socket for new client %s:%u.", ipv6Addr, ntohs(uniqueSockAddr.sin6_port));
+                    LogError("Can not create udp socket for new client from %s:%u.", ipv6Addr, ntohs(uniqueSockAddr.sin6_port));
                     continue;
                 }
             }
+            if (socketLifeCycle.find(sendSocket) != socketLifeCycle.end()) socketLifeCycle[sendSocket] = 60;
             sendUdpPacket(sendSocket, sendSockAddr, udpPacket);
         }
-        // LogDebug("udpPacketQueue size %d", udpPacketQueue.size());
     }
     return 0;
 }
@@ -198,10 +199,37 @@ int Server::sendUdpPacketToCtrl()
     if (sendResult == SOCKET_ERROR) {
         LogError("Send failed with WSAGetLastError %d.", WSAGetLastError());
         return SOCKET_ERROR;
-    // } else {
-    //     char ipv4Addr[INET_ADDRSTRLEN] = {'\0'};
-    //     inet_ntop(AF_INET, &ctrlSockAddr.sin_addr, ipv4Addr, sizeof(ipv4Addr));
-    //     LogDebug("Sent %d bytes to %s:%d", sendResult, ipv4Addr, ntohs(ctrlSockAddr.sin_port));
+    }
+    return 0;
+}
+
+int Server::checkSocketResourcesPerSecond() {
+    // uint16_t per10Seconds = 0;
+    while (keepRunning) {
+        this_thread::sleep_for(chrono::seconds(1));
+        for (auto it = socketLifeCycle.begin(); it != socketLifeCycle.end();) {
+            --it->second;
+            if (it->second <= 0) {
+                udpSokcetConnectWithLocalHost.erase(it->first);
+                udpSockets.erase(it->first);
+                auto sockAddr = socketMapAddr[it->first];
+                socketMapAddr.erase(it->first);
+                addrMapSocket.erase(sockAddr);
+                LogDebug("Close UDP Socket: %u because this socket is inactive.", it->first);
+                closesocket(it->first);
+                it = socketLifeCycle.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        sendUdpPacketToCtrl();
+        if (pMW != nullptr) {
+            pMW->setLcdNumber(udpPacketQueue.size());
+        }
+        // ++per10Seconds;
+        // if (per10Seconds % 10 == 0) {
+        //     LogDebug("Current udpPacketQueue size: %u", udpPacketQueue.size());
+        // }
     }
     return 0;
 }
@@ -210,6 +238,7 @@ int Server::start() {
     thread receiveUdpPacketThread(Server::receiveUdpPacket, this);
     thread forwardUdpPacketThread(Server::forwardUdpPacket, this);
     LogDebug("Server is running.");
+    checkSocketResourcesPerSecond();
     receiveUdpPacketThread.join();
     forwardUdpPacketThread.join();
     LogDebug("Server exit.");

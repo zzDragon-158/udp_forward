@@ -29,7 +29,7 @@ SOCKET createUdpSocket(sockaddr_in& rSockAddr) {
         memset(&sockAddr, 0, sizeof(sockAddr));
         int sockAddrLen = sizeof(sockAddr);
         getsockname(sock, reinterpret_cast<sockaddr*>(&sockAddr), &sockAddrLen);
-        LogDebug("create udp socket bind to %s:%u", inet_ntoa(sockAddr.sin_addr), ntohs(sockAddr.sin_port));
+        LogDebug("create udp socket %u bind to %s:%u",sock, inet_ntoa(sockAddr.sin_addr), ntohs(sockAddr.sin_port));
     }
     return sock;
 }

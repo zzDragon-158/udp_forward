@@ -13,27 +13,29 @@ find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets LinguistTools)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets LinguistTools)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Network)
 find_library(WS2_32_LIBRARY ws2_32)
-# my public api
-set(PUBLIC_API_FILES public_api.cpp public_api.h)
-add_library(public_api STATIC ${PUBLIC_API_FILES})
-target_link_libraries(public_api PRIVATE ${WS2_32_LIBRARY})
-# my client
-set(CLIENT_FILES client.cpp client.h)
-add_library(client STATIC ${CLIENT_FILES})
-target_link_libraries(client PRIVATE public_api)
-# my server
-set(SERVER_FILES server.cpp server.h)
-add_library(server STATIC ${SERVER_FILES})
-target_link_libraries(server PRIVATE public_api)
+# # my public api
+# set(PUBLIC_API_FILES public_api.cpp public_api.h)
+# add_library(public_api SHARED ${PUBLIC_API_FILES})
+# target_link_libraries(public_api ${WS2_32_LIBRARY})
+# # my client
+# set(CLIENT_FILES client.cpp client.h)
+# add_library(client SHARED ${CLIENT_FILES})
+# target_link_libraries(client public_api)
+# # my server
+# set(SERVER_FILES server.cpp server.h)
+# add_library(server SHARED ${SERVER_FILES})
+# target_link_libraries(server public_api)
 
 set(TS_FILES udp_forward_zh_CN.ts)
 
 set(PROJECT_SOURCES
         main.cpp
-        mainwindow.cpp
-        mainwindow.h
+        mainwindow.cpp mainwindow.h
         mainwindow.ui
         ${TS_FILES}
+        public_api.cpp public_api.h
+        client.cpp client.h
+        server.cpp server.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -49,7 +51,7 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
     qt_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 else()
     if(ANDROID)
-        add_library(udp_forward STATIC
+        add_library(udp_forward
             ${PROJECT_SOURCES}
         )
 # Define properties for Android with Qt 5 after find_package() calls as:
@@ -63,7 +65,7 @@ else()
     qt5_create_translation(QM_FILES ${CMAKE_SOURCE_DIR} ${TS_FILES})
 endif()
 
-target_link_libraries(udp_forward PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network server client)
+target_link_libraries(udp_forward PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network ${WS2_32_LIBRARY})
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an

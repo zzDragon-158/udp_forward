@@ -108,7 +108,6 @@ bool Client::initUdpSockets(uint16_t remotePort, uint16_t localPort) {
 }
 
 int Client::receiveUdpPacket() {
-    // recv udp packet from remote host
     while (keepRunning) {
         FD_ZERO(&udpSokcetsFDSet);
         for (const SOCKET& sock: udpSockets) {
@@ -116,8 +115,7 @@ int Client::receiveUdpPacket() {
         }
         if (select(0, &udpSokcetsFDSet, NULL, NULL, NULL) == SOCKET_ERROR) {
             LogError("Select failed with WSAGetLastError %d", WSAGetLastError());
-            keepRunning = false;
-            break;
+            continue;
         }
         for (const SOCKET& sock: udpSockets) {
             if (FD_ISSET(sock, &udpSokcetsFDSet)) {
@@ -169,7 +167,7 @@ int Client::forwardUdpPacket() {
             sockaddr_in recvSockAddr = *(reinterpret_cast<sockaddr_in*>(&udpPacket->sockAddr));
             if (clientAddr.sin_port != recvSockAddr.sin_port) {
                 clientAddr = recvSockAddr;
-                LogDebug("new client connected, port: %u", ntohs(clientAddr.sin_port));
+                LogDebug("New client connected, port: %u", ntohs(clientAddr.sin_port));
             }
             ++udpPacketCount;
             sendUdpPacketV6(sendSocket, sendAddr, udpPacket);
@@ -178,7 +176,6 @@ int Client::forwardUdpPacket() {
             sockaddr_in sendAddr = clientAddr;
             sendUdpPacket(sendSocket, sendAddr, udpPacket);
         }
-        // LogDebug("udpPacketQueue size %d", udpPacketQueue.size());
     }
     return 0;
 }
@@ -197,10 +194,6 @@ int Client::sendUdpPacketToCtrl()
     if (sendResult == SOCKET_ERROR) {
         LogError("Send failed with WSAGetLastError %d.", WSAGetLastError());
         return SOCKET_ERROR;
-    // } else {
-    //     char ipv4Addr[INET_ADDRSTRLEN] = {'\0'};
-    //     inet_ntop(AF_INET, &ctrlSockAddr.sin_addr, ipv4Addr, sizeof(ipv4Addr));
-    //     LogDebug("Sent %d bytes to %s:%d", sendResult, ipv4Addr, ntohs(ctrlSockAddr.sin_port));
     }
     return 0;
 }
@@ -208,10 +201,10 @@ int Client::sendUdpPacketToCtrl()
 int Client::start() {
     thread recvUdpPacketFromRemoteHostThread(Client::receiveUdpPacket, this);
     thread forwardPacketThread(Client::forwardUdpPacket, this);
-    LogDebug("client is running");
+    LogDebug("Client is running");
     recvUdpPacketFromRemoteHostThread.join();
     forwardPacketThread.join();
-    LogDebug("client exit");
+    LogDebug("Client exit");
     return 0;
 }
 

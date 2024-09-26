@@ -22,14 +22,17 @@ public:
     int receiveUdpPacket();
     int forwardUdpPacket();
     int sendUdpPacketToCtrl();
+    inline uint16_t getUniquePort(uint16_t port) { return (port - (port % 4)); }
+    int checkSocketResourcesPerSecond();
     int start();
     int stop();
 private:
     unordered_set<SOCKET> udpSokcetConnectWithLocalHost;
+    map<SOCKET, int8_t> socketLifeCycle;
     vector<SOCKET> udpSokcetsConnectWithRemoteHost;
     sockaddr_in ctrlSockAddr;
     SOCKET ctrlSocket;
-    vector<SOCKET> udpSockets;
+    unordered_set<SOCKET> udpSockets;
     fd_set udpSokcetsFDSet;
     condition_variable udpSokcetsFDSetCV;
     sockaddr_in serverAddr;

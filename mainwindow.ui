@@ -10,21 +10,33 @@
     <height>600</height>
    </rect>
   </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>0</width>
+    <height>0</height>
+   </size>
+  </property>
   <property name="windowTitle">
-   <string>udp_forward----author: zzDragon</string>
+   <string>udp forward----Author by zzDragon</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <widget class="QLineEdit" name="lineEdit_clientServerIPv6Address">
     <property name="geometry">
      <rect>
       <x>140</x>
-      <y>20</y>
-      <width>240</width>
+      <y>40</y>
+      <width>220</width>
       <height>20</height>
      </rect>
     </property>
     <property name="text">
-     <string>2408:8248:e05:8870:2e31:7d7b:e7c2:f9ca</string>
+     <string>::1</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignmentFlag::AlignCenter</set>
@@ -33,11 +45,14 @@
    <widget class="QPushButton" name="pushButton_runClient">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>180</y>
+      <x>40</x>
+      <y>200</y>
       <width>80</width>
       <height>20</height>
      </rect>
+    </property>
+    <property name="cursor">
+     <cursorShape>PointingHandCursor</cursorShape>
     </property>
     <property name="text">
      <string>运行客户端</string>
@@ -46,9 +61,9 @@
    <widget class="QLabel" name="label_clientServerIPv6Address">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>20</y>
-      <width>100</width>
+      <x>40</x>
+      <y>40</y>
+      <width>90</width>
       <height>20</height>
      </rect>
     </property>
@@ -70,6 +85,9 @@
       <width>760</width>
       <height>220</height>
      </rect>
+    </property>
+    <property name="cursor" stdset="0">
+     <cursorShape>IBeamCursor</cursorShape>
     </property>
     <property name="html">
      <string>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;
@@ -102,9 +120,9 @@ li.checked::marker { content: &quot;\2612&quot;; }
    <widget class="QLabel" name="label_clientServerPort">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>60</y>
-      <width>100</width>
+      <x>40</x>
+      <y>80</y>
+      <width>90</width>
       <height>20</height>
      </rect>
     </property>
@@ -118,9 +136,9 @@ li.checked::marker { content: &quot;\2612&quot;; }
    <widget class="QLabel" name="label_clientRemotePort">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>100</y>
-      <width>100</width>
+      <x>40</x>
+      <y>120</y>
+      <width>90</width>
       <height>20</height>
      </rect>
     </property>
@@ -135,7 +153,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
     <property name="geometry">
      <rect>
       <x>140</x>
-      <y>60</y>
+      <y>80</y>
       <width>60</width>
       <height>20</height>
      </rect>
@@ -151,13 +169,13 @@ li.checked::marker { content: &quot;\2612&quot;; }
     <property name="geometry">
      <rect>
       <x>140</x>
-      <y>100</y>
+      <y>120</y>
       <width>60</width>
       <height>20</height>
      </rect>
     </property>
     <property name="text">
-     <string>3460</string>
+     <string>8905</string>
     </property>
     <property name="alignment">
      <set>Qt::AlignmentFlag::AlignCenter</set>
@@ -167,7 +185,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
     <property name="geometry">
      <rect>
       <x>140</x>
-      <y>140</y>
+      <y>160</y>
       <width>60</width>
       <height>20</height>
      </rect>
@@ -182,9 +200,9 @@ li.checked::marker { content: &quot;\2612&quot;; }
    <widget class="QLabel" name="label_clientLocalPort">
     <property name="geometry">
      <rect>
-      <x>20</x>
-      <y>140</y>
-      <width>100</width>
+      <x>40</x>
+      <y>160</y>
+      <width>90</width>
       <height>20</height>
      </rect>
     </property>
@@ -198,8 +216,8 @@ li.checked::marker { content: &quot;\2612&quot;; }
    <widget class="QLabel" name="label_serverRemotePort">
     <property name="geometry">
      <rect>
-      <x>420</x>
-      <y>20</y>
+      <x>440</x>
+      <y>80</y>
       <width>100</width>
       <height>20</height>
      </rect>
@@ -215,7 +233,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
     <property name="geometry">
      <rect>
       <x>540</x>
-      <y>20</y>
+      <y>80</y>
       <width>60</width>
       <height>20</height>
      </rect>
@@ -230,8 +248,8 @@ li.checked::marker { content: &quot;\2612&quot;; }
    <widget class="QLabel" name="label_serverServerPort">
     <property name="geometry">
      <rect>
-      <x>420</x>
-      <y>60</y>
+      <x>440</x>
+      <y>40</y>
       <width>100</width>
       <height>20</height>
      </rect>
@@ -247,7 +265,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
     <property name="geometry">
      <rect>
       <x>540</x>
-      <y>60</y>
+      <y>40</y>
       <width>60</width>
       <height>20</height>
      </rect>
@@ -262,11 +280,14 @@ li.checked::marker { content: &quot;\2612&quot;; }
    <widget class="QPushButton" name="pushButton_runServer">
     <property name="geometry">
      <rect>
-      <x>420</x>
-      <y>100</y>
+      <x>440</x>
+      <y>120</y>
       <width>80</width>
       <height>20</height>
      </rect>
+    </property>
+    <property name="cursor">
+     <cursorShape>PointingHandCursor</cursorShape>
     </property>
     <property name="text">
      <string>运行服务端</string>
@@ -304,6 +325,80 @@ li.checked::marker { content: &quot;\2612&quot;; }
      <enum>Qt::Orientation::Horizontal</enum>
     </property>
    </widget>
+   <widget class="QLCDNumber" name="lcdNumber">
+    <property name="geometry">
+     <rect>
+      <x>440</x>
+      <y>200</y>
+      <width>60</width>
+      <height>20</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_lcdNumber">
+    <property name="geometry">
+     <rect>
+      <x>440</x>
+      <y>160</y>
+      <width>180</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>当前队列中等待转发的报文数量</string>
+    </property>
+    <property name="alignment">
+     <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
+    </property>
+   </widget>
+   <widget class="QGroupBox" name="group_client">
+    <property name="geometry">
+     <rect>
+      <x>20</x>
+      <y>20</y>
+      <width>360</width>
+      <height>240</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>客户端配置</string>
+    </property>
+   </widget>
+   <widget class="QGroupBox" name="group_server">
+    <property name="geometry">
+     <rect>
+      <x>420</x>
+      <y>20</y>
+      <width>360</width>
+      <height>240</height>
+     </rect>
+    </property>
+    <property name="title">
+     <string>服务端配置</string>
+    </property>
+   </widget>
+   <zorder>group_server</zorder>
+   <zorder>group_client</zorder>
+   <zorder>lineEdit_clientServerIPv6Address</zorder>
+   <zorder>pushButton_runClient</zorder>
+   <zorder>label_clientServerIPv6Address</zorder>
+   <zorder>textBrowser_log_display</zorder>
+   <zorder>label_logDisplay</zorder>
+   <zorder>label_clientServerPort</zorder>
+   <zorder>label_clientRemotePort</zorder>
+   <zorder>lineEdit_clientServerPort</zorder>
+   <zorder>lineEdit_clientRemotePort</zorder>
+   <zorder>lineEdit_clientLocalPort</zorder>
+   <zorder>label_clientLocalPort</zorder>
+   <zorder>label_serverRemotePort</zorder>
+   <zorder>lineEdit_serverRemotePort</zorder>
+   <zorder>label_serverServerPort</zorder>
+   <zorder>lineEdit_serverServerPort</zorder>
+   <zorder>pushButton_runServer</zorder>
+   <zorder>line</zorder>
+   <zorder>line_2</zorder>
+   <zorder>lcdNumber</zorder>
+   <zorder>label_lcdNumber</zorder>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">

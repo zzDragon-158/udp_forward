@@ -6,12 +6,12 @@
 
 #define LogDebug(fmt, ...)  { \
     char buffer[256]; \
-    std::snprintf(buffer, sizeof(buffer), "[%s:%s:%d] " fmt, (strrchr(__FILE__,'\\') != 0? strrchr(__FILE__, '\\')+1: __FILE__), __func__, __LINE__, ##__VA_ARGS__); \
+    std::snprintf(buffer, sizeof(buffer), "DEBUG [%s:%s:%d] " fmt, (strrchr(__FILE__,'\\') != 0? strrchr(__FILE__, '\\')+1: __FILE__), __func__, __LINE__, ##__VA_ARGS__); \
     std::cout << buffer << std::flush; \
 }
 #define LogError(fmt, ...)  { \
     char buffer[256]; \
-    std::snprintf(buffer, sizeof(buffer), "[%s:%s:%d] " fmt, (strrchr(__FILE__,'\\') != 0? strrchr(__FILE__, '\\')+1: __FILE__), __func__, __LINE__, ##__VA_ARGS__); \
+    std::snprintf(buffer, sizeof(buffer), "ERROR [%s:%s:%d] " fmt, (strrchr(__FILE__,'\\') != 0? strrchr(__FILE__, '\\')+1: __FILE__), __func__, __LINE__, ##__VA_ARGS__); \
     std::cerr << buffer << std::flush; \
 }
 
