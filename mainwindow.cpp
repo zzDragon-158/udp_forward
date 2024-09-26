@@ -201,7 +201,7 @@ void MainWindow::loadConfigFromJson() {
             ui->lineEdit_serverRemotePort->setText(json["serverRemotePort"].toString());
         }
         if (json.contains("serverServerPort")) {
-            ui->lineEdit_serverServerPort->setText(json["serverRemotePort"].toString());
+            ui->lineEdit_serverServerPort->setText(json["serverServerPort"].toString());
         }
         if (json.contains("clientServerIPv6Address")) {
             ui->lineEdit_clientServerIPv6Address->setText(json["clientServerIPv6Address"].toString());
