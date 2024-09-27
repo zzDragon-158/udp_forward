@@ -20,7 +20,6 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
-    void setLcdNumber(int number);
 
 private slots:
     void onPushButtonClientRunClicked();
@@ -33,6 +32,7 @@ private:
     void loadConfigFromJson();
     void setClientConfigReadOnly(bool flag);
     void setServerConfigReadOnly(bool flag);
+    void periodTask();
 };
 
 // 自定义流缓冲区
@@ -54,23 +54,19 @@ protected:
     }
 
     int sync() override {
-        // 当遇到换行符时，输出整个缓冲区内容到 QTextBrowser
+        std::lock_guard<mutex> lock(bufferMutex);
         if (!buffer.empty()) {
             /* protect textBrowser */ {
-                std::lock_guard<mutex> lock(textBrowserMutex);
                 textBrowser->append(QString::fromStdString(buffer));
                 textBrowser->update();
-                // textBrowser->verticalScrollBar()->update();
-                // textBrowser->verticalScrollBar()->setValue(textBrowser->verticalScrollBar()->maximum());
+                buffer.clear();
             }
-            buffer.clear();
         }
         return 0; // 成功
     }
 
 private:
     QTextBrowser* textBrowser;
-    std::mutex textBrowserMutex;
 };
 
 #endif // MAINWINDOW_H

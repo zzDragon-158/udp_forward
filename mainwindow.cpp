@@ -6,11 +6,16 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QFile>
+#include <QTimer>
 
-#define storeCfgFilePath    "data.json"
+#define storeCfgFilePath    "config.json"
 
 // 声明全局 QTextBrowser
-TextBrowserStreamBuf* globalBuffer = nullptr;
+static TextBrowserStreamBuf* globalBuffer = nullptr;
+static std::thread* pClientThread = nullptr;
+static Client* pClient = nullptr;
+static std::thread* pServerThread = nullptr;
+static Server* pServer = nullptr;
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -38,6 +43,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(ui->pushButton_runClient, &QPushButton::clicked, this, &MainWindow::onPushButtonClientRunClicked);
     connect(ui->pushButton_runServer, &QPushButton::clicked, this, &MainWindow::onPushButtonServerRunClicked);
+    QTimer *timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, &MainWindow::periodTask);
+    timer->start(1000);
 }
 
 MainWindow::~MainWindow()
@@ -47,9 +55,6 @@ MainWindow::~MainWindow()
 
 void MainWindow::onPushButtonClientRunClicked() {
     ui->pushButton_runClient->setEnabled(false);
-    // 创建/销毁Client实例
-    static std::thread* pClientThread = nullptr;
-    static Client* pClient = nullptr;
     if (pClient == nullptr) {
         // 校验 IPv6 地址
         QHostAddress address;
@@ -101,11 +106,7 @@ void MainWindow::onPushButtonClientRunClicked() {
 
 void MainWindow::onPushButtonServerRunClicked() {
     ui->pushButton_runServer->setEnabled(false);
-    // 创建/销毁Client实例
-    static std::thread* pServerThread = nullptr;
-    static Server* pServer = nullptr;
     if (pServer == nullptr) {
-        // 校验端口号
         bool validPort;
         uint16_t serverPort = ui->lineEdit_serverServerPort->text().toUShort(&validPort);
         if (!validPort || serverPort == 0 || serverPort > 65535) {
@@ -113,7 +114,6 @@ void MainWindow::onPushButtonServerRunClicked() {
             ui->pushButton_runServer->setEnabled(true);
             return;
         }
-
         uint16_t remotePort = ui->lineEdit_serverRemotePort->text().toUShort(&validPort);
         if (!validPort || remotePort == 0 || remotePort > 65535) {
             LogError("远程端口号无效");
@@ -139,10 +139,6 @@ void MainWindow::onPushButtonServerRunClicked() {
     ui->pushButton_runServer->setEnabled(true);
 }
 
-void MainWindow::setLcdNumber(int number) {
-    ui->lcdNumber->display(number);
-}
-
 void MainWindow::saveClientConfigToJson() {
     QFile file(storeCfgFilePath);
     QJsonObject json;
@@ -161,9 +157,9 @@ void MainWindow::saveClientConfigToJson() {
         QJsonDocument doc(json);
         file.write(doc.toJson());
         file.close();
-        LogDebug("Success", "Data saved successfully!");
+        LogDebug("Client config saved successfully!");
     } else {
-        LogError("Error", "Could not save data.")
+        LogError("Client config saved failed.");
     }
 }
 
@@ -183,9 +179,9 @@ void MainWindow::saveServerConfigToJson() {
         QJsonDocument doc(json);
         file.write(doc.toJson());
         file.close();
-        LogDebug("Success", "Data saved successfully!");
+        LogDebug("Server config saved successfully!");
     } else {
-        LogError("Error", "Could not save data.")
+        LogError("Server config saved failed.");
     }
 }
 
@@ -229,4 +225,14 @@ void MainWindow::setClientConfigReadOnly(bool flag) {
 void MainWindow::setServerConfigReadOnly(bool flag) {
     ui->lineEdit_serverRemotePort->setReadOnly(flag);
     ui->lineEdit_serverServerPort->setReadOnly(flag);
+}
+
+void MainWindow::periodTask() {
+    if (pServerThread != nullptr && pServer != nullptr) {
+        pServer->cleanUselessSockets();
+        int bufferNum = pServer->getUdpPacketQueueSize();
+        ui->lcdNumber->display(bufferNum);
+    }
+    std::cout << std::flush;
+    std::cerr << std::flush;
 }

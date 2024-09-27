@@ -71,10 +71,6 @@ int sendUdpPacket(SOCKET& sock, sockaddr_in& rSockAddr, UdpPacketPtr& udpPacket)
         reinterpret_cast<sockaddr*>(&rSockAddr), sizeof(sockaddr_in));
     if (sendResult == SOCKET_ERROR) {
         LogError("Send failed with WSAGetLastError %d.", WSAGetLastError());
-    // } else {
-    //     char ipv4Addr[INET_ADDRSTRLEN] = {'\0'};
-    //     inet_ntop(AF_INET, &rSockAddr.sin_addr, ipv4Addr, sizeof(ipv4Addr));
-    //     LogDebug("Send %d bytes to %s:%u", sendResult, ipv4Addr, ntohs(rSockAddr.sin_port));
     }
     return sendResult;
 }
@@ -84,10 +80,6 @@ int sendUdpPacketV6(SOCKET& sock, sockaddr_in6& rSockAddr, UdpPacketPtr& udpPack
         reinterpret_cast<sockaddr*>(&rSockAddr), sizeof(sockaddr_in6));
     if (sendResult == SOCKET_ERROR) {
         LogError("Send failed with WSAGetLastError %d.", WSAGetLastError());
-    // } else {
-    //     char ipv6Addr[INET6_ADDRSTRLEN] = {'\0'};
-    //     inet_ntop(AF_INET6, &rSockAddr.sin6_addr, ipv6Addr, sizeof(ipv6Addr));
-    //     LogDebug("Send %d bytes to %s:%u", sendResult, ipv6Addr, ntohs(rSockAddr.sin6_port));
     }
     return sendResult;
 }

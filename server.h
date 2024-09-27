@@ -22,8 +22,8 @@ public:
     int receiveUdpPacket();
     int forwardUdpPacket();
     int sendUdpPacketToCtrl();
-    inline uint16_t getUniquePort(uint16_t port) { return (port - (port % 4)); }
-    int checkSocketResourcesPerSecond();
+    int cleanUselessSockets();
+    inline int getUdpPacketQueueSize() { return udpPacketQueue.size(); }
     int start();
     int stop();
 private:
@@ -42,4 +42,5 @@ private:
     map<sockaddr_in6, SOCKET, sockaddr_in6_compare> addrMapSocket;
     map<SOCKET, sockaddr_in6> socketMapAddr;
     bool keepRunning;
+    inline uint16_t getUniquePort(uint16_t port) { return (port - (port % 4)); }
 };

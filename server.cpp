@@ -1,10 +1,8 @@
 #include "server.h"
-#include "mainwindow.h"
 
 #define SWITCH_THRESHOLD 5000
 
 extern bool isWinsockInitialized;
-MainWindow* pMW = nullptr;
 
 Server::Server(uint16_t serverPort, uint16_t remotePort) {
     keepRunning = true;
@@ -203,12 +201,10 @@ int Server::sendUdpPacketToCtrl()
     return 0;
 }
 
-int Server::checkSocketResourcesPerSecond() {
-    // uint16_t per10Seconds = 0;
-    while (keepRunning) {
-        this_thread::sleep_for(chrono::seconds(1));
+int Server::cleanUselessSockets() {
+    if (keepRunning) {
         for (auto it = socketLifeCycle.begin(); it != socketLifeCycle.end();) {
-            --it->second;
+            it->second -= 1;
             if (it->second <= 0) {
                 udpSokcetConnectWithLocalHost.erase(it->first);
                 udpSockets.erase(it->first);
@@ -223,13 +219,6 @@ int Server::checkSocketResourcesPerSecond() {
             }
         }
         sendUdpPacketToCtrl();
-        if (pMW != nullptr) {
-            pMW->setLcdNumber(udpPacketQueue.size());
-        }
-        // ++per10Seconds;
-        // if (per10Seconds % 10 == 0) {
-        //     LogDebug("Current udpPacketQueue size: %u", udpPacketQueue.size());
-        // }
     }
     return 0;
 }
@@ -238,7 +227,6 @@ int Server::start() {
     thread receiveUdpPacketThread(Server::receiveUdpPacket, this);
     thread forwardUdpPacketThread(Server::forwardUdpPacket, this);
     LogDebug("Server is running.");
-    checkSocketResourcesPerSecond();
     receiveUdpPacketThread.join();
     forwardUdpPacketThread.join();
     LogDebug("Server exit.");
