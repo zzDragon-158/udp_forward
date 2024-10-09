@@ -86,6 +86,7 @@ int Server::receiveUdpPacket() {
         }
         for (const SOCKET& sock: udpSockets) {
             if (FD_ISSET(sock, &udpSokcetsFDSet)) {
+                if (socketLifeCycle.find(sock) != socketLifeCycle.end()) socketLifeCycle[sock] = 60;
                 char packetBuffer[65535];
                 UdpPacketPtr upp = make_shared<UdpPacket>();
                 int sockAddrLen = sizeof(upp->sockAddr);
