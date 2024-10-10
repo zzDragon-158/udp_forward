@@ -3,6 +3,7 @@
 #define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
 
 bool isWinsockInitialized = false;
+int udpBufferSize = 1024 * 1024;
 
 SOCKET createUdpSocket(sockaddr_in& rSockAddr) {
     SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -18,6 +19,7 @@ SOCKET createUdpSocket(sockaddr_in& rSockAddr) {
             closesocket(sock);
             return SOCKET_ERROR;
         }
+        setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&udpBufferSize, sizeof(udpBufferSize));
     }
     /* bug: udp socket 10054 */ {
         BOOL bEnalbeConnRestError = FALSE;
@@ -48,6 +50,7 @@ SOCKET createUdpSocketV6(sockaddr_in6& rSockAddr) {
             closesocket(sock);
             return SOCKET_ERROR;
         }
+        setsockopt(sock, SOL_SOCKET, SO_RCVBUF, (char*)&udpBufferSize, sizeof(udpBufferSize));
     }
     /* bug: udp socket 10054 */ {
         BOOL bEnalbeConnRestError = FALSE;

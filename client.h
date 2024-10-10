@@ -28,5 +28,7 @@ private:
     queue<UdpPacketPtr> udpPacketQueue;
     mutex udpPacketQueueMutex;
     condition_variable udpPacketQueueCV;
+    uint64_t sendUdpPacketCount;
+    uint64_t recvUdpPacketCount;
     bool keepRunning;
 };

@@ -5,6 +5,8 @@
 extern bool isWinsockInitialized;
 
 Client::Client(const char* serverIPv6Addr, uint16_t serverPort, uint16_t remotePort, uint16_t localPort) {
+    sendUdpPacketCount = 0;
+    recvUdpPacketCount = 0;
     keepRunning = true;
     // init Winsock
     WSADATA wsaData;
@@ -129,6 +131,7 @@ int Client::receiveUdpPacket() {
                 if (upp->dataBytes == SOCKET_ERROR) {
                     LogError("Recv failed with WSAGetLastError %d", WSAGetLastError());
                 } else {
+                    if (sock != ctrlSocket && sock != udpSokcetConnectWithLocalHost) ++recvUdpPacketCount;
                     upp->data = new char[upp->dataBytes];
                     upp->sock = sock;
                     memcpy(upp->data, packetBuffer, upp->dataBytes);
@@ -145,8 +148,6 @@ int Client::receiveUdpPacket() {
 }
 
 int Client::forwardUdpPacket() {
-    uint64_t udpPacketCount = 0;
-
     while (keepRunning) {
         unique_lock<mutex> lock(udpPacketQueueMutex);
         udpPacketQueueCV.wait(
@@ -162,14 +163,14 @@ int Client::forwardUdpPacket() {
             continue;
         }
         if (udpPacket->sock == udpSokcetConnectWithLocalHost) {
-            SOCKET sendSocket = udpSokcetsConnectWithRemoteHost[udpPacketCount / SWITCH_THRESHOLD % 4];
-            sockaddr_in6 sendAddr = serverAddrVector[udpPacketCount / SWITCH_THRESHOLD % 4];
+            SOCKET sendSocket = udpSokcetsConnectWithRemoteHost[sendUdpPacketCount / SWITCH_THRESHOLD % 4];
+            sockaddr_in6 sendAddr = serverAddrVector[sendUdpPacketCount / SWITCH_THRESHOLD % 4];
             sockaddr_in recvSockAddr = *(reinterpret_cast<sockaddr_in*>(&udpPacket->sockAddr));
             if (clientAddr.sin_port != recvSockAddr.sin_port) {
                 clientAddr = recvSockAddr;
                 LogDebug("New client connected, port: %u", ntohs(clientAddr.sin_port));
             }
-            ++udpPacketCount;
+            ++sendUdpPacketCount;
             sendUdpPacketV6(sendSocket, sendAddr, udpPacket);
         } else {
             SOCKET sendSocket = udpSokcetConnectWithLocalHost;
